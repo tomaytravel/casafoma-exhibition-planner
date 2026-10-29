@@ -1,0 +1,36 @@
+import {FLOORPLANS} from './room-data.js';
+import {ROOM_META,modelInside} from './model.js';
+export const SCENE_TEMPLATES={
+ 'x-banner':{name:'X배너',room:'annex',graphic:'checker',x:3.5,y:3.7,z:.15,w:.6,h:1.8,object:'x-banner'},
+ 'wine-bottle':{name:'와인병',room:'annex',x:3.6,y:2.8,z:0,w:.08,h:.3,object:'bottle'},
+ 'wine-glass':{name:'와인잔',room:'annex',x:3.6,y:2.8,z:0,w:.085,h:.22,object:'glass'},
+ 'approach-checker':{name:'진입로 체커 현수막',room:'court',graphic:'checker',x:13.205,y:13.8,z:.2,w:1.6,h:1.6,plane:'side'},
+ 'approach-indigo':{name:'진입로 인디고 현수막',room:'court',graphic:'indigo',x:13.205,y:15.8,z:.2,w:1.6,h:1.6,plane:'side'},
+ 'strip-red':{name:'본관 레드 띠 현수막',room:'main',graphic:'red-strip',x:8.6233,y:12.92,z:0,w:.45,h:2.4,plane:'front'},
+ 'strip-indigo':{name:'본관 인디고 띠 현수막',room:'main',graphic:'indigo-strip',x:11.3233,y:12.92,z:0,w:.45,h:2.4,plane:'front'},
+ 'window-logo':{name:'별관 공식 로고 시트지',room:'annex',layer:'logo',x:1.177,y:5.663,z:0,w:5.796,h:2.7,plane:'front'},
+ 'window-art':{name:'별관 ART PROJECT 시트지',room:'annex',layer:'art',x:1.177,y:5.663,z:0,w:5.796,h:2.7,plane:'front'},
+};
+for(const [kind,list]of [['display',FLOORPLANS[1].displays||[]],['shelf',FLOORPLANS[1].shelves||[]]])for(const [i,v]of list.entries())SCENE_TEMPLATES[kind+'-'+i]={...JSON.parse(JSON.stringify(v)),name:kind==='display'?'진열대':'시음대',room:'annex',fixture:kind};
+export const sceneLabel=room=>room==='court'?'진입로':ROOM_META[room]?.label||room;
+export function sceneDefaults(){return Object.keys(SCENE_TEMPLATES).filter(k=>!['x-banner','wine-bottle','wine-glass'].includes(k)).map((kind,i)=>({id:'s'+(i+1),kind,name:SCENE_TEMPLATES[kind].name,dx:0,dy:0,dz:0,scale:1}));}
+export function sceneTemplate(item){const t=SCENE_TEMPLATES[item.kind];return t&&item.room?{...t,room:item.room}:t;}
+export function fixtureDimensions(item){const t=sceneTemplate(item);return {w:item.w??t.w*item.scale,d:item.d??t.d*item.scale,h:item.h??t.h*item.scale};}
+export function migrateFixtures(items){return items.map(item=>({...item,...(sceneTemplate(item)?.layer?{dy:0,placementPending:!!item.placementPending}:{}),name:item.name.replace('별관 낮은 진열대','진열대').replace('별관 목재 선반','시음대').replace('낮은 진열대','진열대').replace('목재 선반','시음대')}));}
+export function sceneVisible(item,building){const t=sceneTemplate(item);return t&&(building===2||(t.room!=='court'&&ROOM_META[t.room].index===building));}
+export function sceneValidate(items){if(!Array.isArray(items)||items.length>60)throw Error('설치물은 최대 60개까지 배치할 수 있습니다.');const ids=new Set();for(const i of items){const t=sceneTemplate(i);if(!t||!['main','annex','court'].includes(t.room)||typeof i.id!=='string'||!/^s\d+$/.test(i.id)||ids.has(i.id)||typeof i.name!=='string'||[...i.name].length>24)throw Error('설치물의 종류·이름·ID를 확인하세요.');ids.add(i.id);if(![i.dx,i.dy,i.dz,i.scale].every(Number.isFinite)||i.scale<.1||i.scale>3||Math.abs(i.dx)>20||Math.abs(i.dy)>20||Math.abs(i.dz)>8)throw Error('설치물의 이동·크기 값을 확인하세요.');if(t.fixture){if(!ROOM_META[t.room])throw Error('진열대·시음대는 본관 또는 별관을 선택하세요.');const {w,d,h}=fixtureDimensions(i);if(![w,d,h].every(Number.isFinite)||w<.1||d<.1||h<.1||w>15||d>15||h>5)throw Error('가로·세로·높이는 유효한 치수를 입력하세요.');const x=t.x+i.dx,y=t.y+i.dy,p=FLOORPLANS[ROOM_META[t.room].index].outline;if(![[x,y],[x+w,y],[x+w,y+d],[x,y+d]].every(v=>modelInside([v[0]+Math.sign(x+w/2-v[0])*.002,v[1]+Math.sign(y+d/2-v[1])*.002],p)))throw Error('진열대·시음대 전체를 선택한 공간의 바닥 안에 배치하세요.');if(i.dz!==0)throw Error('진열대·시음대는 바닥에 고정됩니다.');}}return items;}
+export function syncSceneGeometry(items){for(const p of FLOORPLANS){p.displays=[];p.shelves=[];}for(const i of items){const t=sceneTemplate(i);if(!t.fixture)continue;const {w,d,h}=fixtureDimensions(i);for(const view of [ROOM_META[t.room].index,2]){const r=ROOM_META[t.room],shift=view===2;FLOORPLANS[view][t.fixture==='display'?'displays':'shelves'].push({id:i.id,x:t.x+i.dx+(shift?r.tx:0),y:t.y+i.dy+(shift?r.ty:0),z:r.base,w,d,h});}}}
+export function resolveSupport(prop,sceneItems,modelItems){
+ if(typeof prop.support==='string'){const parent=sceneItems.find(i=>i.id===prop.support),t=parent&&sceneTemplate(parent);if(t?.fixture){const d=fixtureDimensions(parent);return {id:parent.id,room:t.room,x:t.x+parent.dx+d.w/2,y:t.y+parent.dy+d.d/2,z:ROOM_META[t.room].base+d.h,w:d.w,d:d.d,angle:0};}}
+ const table=modelItems.find(i=>i.id===prop.support&&i.type==='table');if(table)return {id:table.id,room:table.room,x:table.x,y:table.y,z:ROOM_META[table.room].base+table.h,w:table.w,d:table.d,angle:table.angle||0};return null;
+}
+export function syncSupportedProps(sceneItems,modelItems){for(const prop of sceneItems){const support=resolveSupport(prop,sceneItems,modelItems);if(!support)continue;prop.room=support.room;if(Number.isFinite(prop.supportU))prop.dx=prop.supportU*support.w;if(Number.isFinite(prop.supportV))prop.dy=prop.supportV*support.d;}}
+export function validateSupportedProps(sceneItems,modelItems){
+ const groups=new Map();for(const prop of sceneItems){const t=sceneTemplate(prop);if(!['glass','bottle'].includes(t?.object))continue;const support=resolveSupport(prop,sceneItems,modelItems);if(!support)continue;const radius=t.w*prop.scale/2;if(Math.abs(prop.dx)+radius>support.w/2+.00001||Math.abs(prop.dy)+radius>support.d/2+.00001)throw Error('와인병·와인잔 전체를 시음대 또는 테이블 상판 안에 배치하세요.');const list=groups.get(support.id)||[];for(const other of list)if(Math.hypot(prop.dx-other.prop.dx,prop.dy-other.prop.dy)<radius+other.radius+.012-1e-6)throw Error('와인병·와인잔이 서로 겹칩니다. 간격을 넓히세요.');list.push({prop,radius});groups.set(support.id,list);}
+}
+export function preloadTastingProps(items,only=null){
+ const out=JSON.parse(JSON.stringify(items));let id=Math.max(0,...out.map(i=>Number(i.id.slice(1))||0))+1;
+ for(const parent of [...out]){if(sceneTemplate(parent)?.fixture!=='shelf'||(only&&!only.includes(parent.id)))continue;const dims=fixtureDimensions(parent),spanX=Math.min(.8,dims.w*.65),spanY=Math.min(.24,dims.d*.45);for(const [kind,row]of [['wine-bottle',-1],['wine-glass',1]]){const existing=out.filter(i=>i.support===parent.id&&i.kind===kind);while(existing.length<5){const p={id:'s'+id++,kind,name:SCENE_TEMPLATES[kind].name,room:sceneTemplate(parent).room,dx:0,dy:0,dz:0,scale:1,support:parent.id};out.push(p);existing.push(p);}existing.slice(0,5).forEach((p,index)=>{p.supportU=((index-2)*spanX/4)/dims.w;p.supportV=(row*spanY/2)/dims.d;p.dx=p.supportU*dims.w;p.dy=p.supportV*dims.d;});}}
+ if(out.length>60)throw Error('시음대 소품을 포함해 최대 60개까지 배치할 수 있습니다.');return out;
+}
+export function freeWineSlot(prop,items,modelItems){const support=resolveSupport(prop,items,modelItems);if(!support)return prop;const t=sceneTemplate(prop),radius=t.w*prop.scale/2,positions=[[prop.dx,prop.dy]];for(let x=-support.w/2+radius+.015;x<=support.w/2-radius;x+=.12)for(let y=-support.d/2+radius+.015;y<=support.d/2-radius;y+=.12)positions.push([x,y]);positions.sort((a,b)=>a[0]**2+a[1]**2-(b[0]**2+b[1]**2));for(const [dx,dy]of positions){if(Math.abs(dx)+radius>support.w/2||Math.abs(dy)+radius>support.d/2)continue;let free=true;for(const other of items){if(other.id===prop.id||other.support!==prop.support||!['wine-bottle','wine-glass'].includes(other.kind))continue;const r=sceneTemplate(other).w*other.scale/2;if(Math.hypot(dx-other.dx,dy-other.dy)<radius+r+.012){free=false;break;}}if(free)return {...prop,dx,dy,supportU:dx/support.w,supportV:dy/support.d};}return null;}
