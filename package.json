@@ -6,7 +6,8 @@
   "scripts": {
     "build": "python3 scripts/build.py",
     "test": "node --test tests/*.test.mjs",
-    "test:browser": "node tests/browser.cjs"
+    "test:browser": "node tests/browser.cjs",
+    "test:vinyl": "node tests/vinyl-drag.cjs"
   },
   "devDependencies": {
     "playwright": "1.62.1"
